@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FS Engineering AI | Admin Panel</title>
+  <title>FS Engineering AI | Secure Admin Panel</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{--bg:#04070c;--panel:#08121c;--panel2:#0d1825;--text:#f4f8fc;--muted:#9aa9bd;--cyan:#55d8ff;--blue:#2d68ff;--green:#22c55e;--red:#ef4444;--amber:#f3a11a;--line:rgba(85,216,255,.18)}
@@ -14,16 +14,17 @@
   <div class="wrap">
     <div id="gate" class="gate">
       <h2>FS Engineering AI Admin</h2>
-      <p>Enter admin access code to open the license request panel.</p>
-      <input id="adminCode" class="input" type="password" placeholder="Admin access code" />
-      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn" onclick="unlockAdmin()">Open Admin Panel</button><button class="btn secondary" onclick="location.href='index.html'">Back to Website</button></div>
-      <p style="font-size:12px;margin-top:16px">Temporary UI lock for v1. Supabase Auth will be added in the next step.</p>
+      <p>Sign in with your authorized Supabase admin account.</p>
+      <input id="adminEmail" class="input" type="email" placeholder="Admin email" autocomplete="email" />
+      <input id="adminPassword" class="input" type="password" placeholder="Password" autocomplete="current-password" style="margin-top:10px" />
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button class="btn" onclick="loginAdmin()">Sign In</button><button class="btn secondary" onclick="location.href='index.html'">Back to Website</button></div>
+      <p id="loginStatus" style="font-size:13px;margin-top:16px;color:#9aa9bd">Only emails listed in <b>admin_users</b> can open this panel.</p>
     </div>
 
     <div id="app" class="hidden">
       <div class="top">
         <div class="brand"><img class="logo" src="assets/fs_engineering_logo.png" alt="FS Engineering AI"><div><h1>License Requests Admin Panel</h1><p>Manage FragSmart AI license requests, approvals, rejections, and license keys.</p></div></div>
-        <div class="toolbar"><button class="btn secondary" onclick="loadRequests()">Refresh</button><button class="btn secondary" onclick="location.href='index.html'">Website</button><button class="btn danger" onclick="lockAdmin()">Lock</button></div>
+        <div class="toolbar"><span class="meta" id="adminIdentity"></span><button class="btn secondary" onclick="loadRequests()">Refresh</button><button class="btn secondary" onclick="location.href='index.html'">Website</button><button class="btn danger" onclick="logoutAdmin()">Sign Out</button></div>
       </div>
 
       <div id="notice" class="notice hidden"></div>
@@ -53,16 +54,60 @@
     const FS_SUPABASE_URL = "https://jxypwsgjpwfzwgzipykn.supabase.co";
     const FS_SUPABASE_KEY = "sb_publishable_TssaLxEGahmUQZJYSTy4pQ_1GgufMLP";
     const fsSupabase = window.supabase.createClient(FS_SUPABASE_URL, FS_SUPABASE_KEY);
-    const TEMP_ADMIN_CODE = "FS-ADMIN-2026";
     let requests = [];
+    let currentAdminEmail = null;
 
     function showNotice(message, isError=false){const n=document.getElementById('notice');n.textContent=message;n.className='notice'+(isError?' err':'');n.classList.remove('hidden');setTimeout(()=>n.classList.add('hidden'),6000)}
     function escapeHtml(value){return String(value ?? '').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
     function formatDate(value){if(!value)return '-';try{return new Date(value).toLocaleString()}catch(e){return value}}
     function normalizeStatus(s){return (s || 'pending').toLowerCase()}
-    function unlockAdmin(){const code=document.getElementById('adminCode').value.trim();if(code!==TEMP_ADMIN_CODE){alert('Wrong admin access code');return}sessionStorage.setItem('fs_admin_open','1');document.getElementById('gate').classList.add('hidden');document.getElementById('app').classList.remove('hidden');loadRequests()}
-    function lockAdmin(){sessionStorage.removeItem('fs_admin_open');location.reload()}
-    if(sessionStorage.getItem('fs_admin_open')==='1'){document.addEventListener('DOMContentLoaded',()=>{document.getElementById('gate').classList.add('hidden');document.getElementById('app').classList.remove('hidden');loadRequests()})}
+    function setLoginStatus(message, isError=false){const el=document.getElementById('loginStatus'); if(el){el.textContent=message; el.style.color=isError?'#fecaca':'#9aa9bd';}}
+
+    async function verifyAdminSession(){
+      const { data:{ session } } = await fsSupabase.auth.getSession();
+      if(!session || !session.user || !session.user.email){showLogin();return false;}
+      const email=session.user.email;
+      const { data, error } = await fsSupabase
+        .from('admin_users')
+        .select('email, role')
+        .eq('email', email)
+        .maybeSingle();
+      if(error || !data){
+        await fsSupabase.auth.signOut();
+        showLogin();
+        setLoginStatus('This account is not authorized as admin.', true);
+        return false;
+      }
+      currentAdminEmail=email;
+      document.getElementById('gate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      document.getElementById('adminIdentity').textContent=email+' • '+data.role;
+      await loadRequests();
+      return true;
+    }
+
+    function showLogin(){
+      document.getElementById('gate').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
+      currentAdminEmail=null;
+    }
+
+    async function loginAdmin(){
+      const email=document.getElementById('adminEmail').value.trim();
+      const password=document.getElementById('adminPassword').value;
+      if(!email || !password){setLoginStatus('Enter email and password.', true);return;}
+      setLoginStatus('Signing in...');
+      const { error } = await fsSupabase.auth.signInWithPassword({email, password});
+      if(error){setLoginStatus(error.message, true);return;}
+      await verifyAdminSession();
+    }
+
+    async function logoutAdmin(){
+      await fsSupabase.auth.signOut();
+      location.reload();
+    }
+
+    document.addEventListener('DOMContentLoaded',()=>{verifyAdminSession()});
 
     async function loadRequests(){
       document.getElementById('requestList').innerHTML='<div class="empty">Loading...</div>';
@@ -117,28 +162,28 @@
 
     async function saveNote(id){
       const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'0',10)||null;
-      const {error}=await fsSupabase.from('license_requests').update({admin_note:note,license_days:days,processed_by:'FS Engineering AI Admin'}).eq('id',id);
+      const {error}=await fsSupabase.from('license_requests').update({admin_note:note,license_days:days,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
       if(error){showNotice(error.message,true);return}showNotice('Admin note saved.');await loadRequests();
     }
 
     async function generateKey(id){
       const row=requests.find(r=>String(r.id)===String(id));if(!row)return;
       const key=makeLicenseKey(row);const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
-      const {error}=await fsSupabase.from('license_requests').update({license_key:key,license_days:days,processed_by:'FS Engineering AI Admin'}).eq('id',id);
+      const {error}=await fsSupabase.from('license_requests').update({license_key:key,license_days:days,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
       if(error){showNotice(error.message,true);return}showNotice('License key generated.');await loadRequests();
     }
 
     async function approveRequest(id){
       const row=requests.find(r=>String(r.id)===String(id));if(!row)return;
       let key=row.license_key || makeLicenseKey(row);const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
-      const {error}=await fsSupabase.from('license_requests').update({status:'approved',license_key:key,license_days:days,admin_note:note,approved_at:new Date().toISOString(),rejected_at:null,processed_by:'FS Engineering AI Admin'}).eq('id',id);
+      const {error}=await fsSupabase.from('license_requests').update({status:'approved',license_key:key,license_days:days,admin_note:note,approved_at:new Date().toISOString(),rejected_at:null,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
       if(error){showNotice(error.message,true);return}showNotice('Request approved.');await loadRequests();
     }
 
     async function rejectRequest(id){
       const note=document.getElementById('note-'+id).value.trim();
       if(!confirm('Reject this license request?'))return;
-      const {error}=await fsSupabase.from('license_requests').update({status:'rejected',admin_note:note,rejected_at:new Date().toISOString(),processed_by:'FS Engineering AI Admin'}).eq('id',id);
+      const {error}=await fsSupabase.from('license_requests').update({status:'rejected',admin_note:note,rejected_at:new Date().toISOString(),processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
       if(error){showNotice(error.message,true);return}showNotice('Request rejected.');await loadRequests();
     }
   </script>
