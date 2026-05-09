@@ -167,6 +167,33 @@
           .from("license_requests")
           .insert([payload]);
 
+        if (!error) {
+          try {
+            await fetch(
+              "https://jxypwsgjpwfzwgzipykn.supabase.co/functions/v1/notify-license-request",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": "Bearer sb_publishable_TssaLxEGahmUQZJYSTy4pQ_1GgufMLP"
+                },
+                body: JSON.stringify({
+                  name: payload.customer_name,
+                  email: payload.email,
+                  company: payload.company_name,
+                  phone: payload.phone,
+                  message:
+                    "Package: " + payload.requested_package +
+                    "\nMachine ID: " + payload.machine_id +
+                    "\n\n" + payload.message
+                })
+              }
+            );
+          } catch (mailErr) {
+            console.error("Mail notification error:", mailErr);
+          }
+        }
+
         if (error) {
           console.error(error);
           setLicenseStatus("err", "The request could not be submitted. Please email support@fsengineeringai.com.");
