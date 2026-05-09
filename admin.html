@@ -174,10 +174,68 @@
     }
 
     async function approveRequest(id){
-      const row=requests.find(r=>String(r.id)===String(id));if(!row)return;
-      let key=row.license_key || makeLicenseKey(row);const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
-      const {error}=await fsSupabase.from('license_requests').update({status:'approved',license_key:key,license_days:days,admin_note:note,approved_at:new Date().toISOString(),rejected_at:null,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
-      if(error){showNotice(error.message,true);return}showNotice('Request approved.');await loadRequests();
+      const row=requests.find(r=>String(r.id)===String(id));
+      if(!row)return;
+
+      const key=row.license_key || makeLicenseKey(row);
+      const note=document.getElementById('note-'+id).value.trim();
+      const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
+      const adminEmail=currentAdminEmail || 'FS Engineering AI Admin';
+
+      const {error}=await fsSupabase
+        .from('license_requests')
+        .update({
+          status:'approved',
+          license_key:key,
+          license_days:days,
+          admin_note:note,
+          approved_at:new Date().toISOString(),
+          rejected_at:null,
+          processed_by:adminEmail
+        })
+        .eq('id',id);
+
+      if(error){
+        showNotice(error.message,true);
+        return;
+      }
+
+      try{
+        const res=await fetch('https://jxypwsgjpwfzwgzipykn.supabase.co/functions/v1/generate-license',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'Authorization':'Bearer sb_publishable_TssaLxEGahmUQZJYSTy4pQ_1GgufMLP'
+          },
+          body:JSON.stringify({
+            request_id:row.id,
+            customer_name:row.customer_name,
+            company_name:row.company_name,
+            email:row.email,
+            machine_id:row.machine_id,
+            product:row.product || 'FragSmart AI',
+            license_key:key,
+            duration_days:days,
+            generated_by:adminEmail
+          })
+        });
+
+        const result=await res.json();
+
+        if(!res.ok){
+          console.error('generate-license error:',result);
+          showNotice('Request approved, but license generation failed: '+JSON.stringify(result),true);
+          await loadRequests();
+          return;
+        }
+
+        showNotice('Request approved, license generated, and customer email sent.');
+      }catch(err){
+        console.error('generate-license function failed:',err);
+        showNotice('Request approved, but generate-license function failed.',true);
+      }
+
+      await loadRequests();
     }
 
     async function rejectRequest(id){
