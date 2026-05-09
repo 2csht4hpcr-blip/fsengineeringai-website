@@ -47,11 +47,23 @@
     .footer-logo{width:78px;height:78px;object-fit:cover;border-radius:22px;border:1px solid rgba(243,161,26,.22);box-shadow:0 0 40px rgba(243,161,26,.16);display:block;margin:0 auto 14px}
     .mailto-link{color:#b8f2ff;font-weight:900}
 
+
+    .form-status{grid-column:1/-1;margin-top:4px;border-radius:16px;padding:13px 15px;font-size:14px;line-height:1.5;display:none}
+    .form-status.ok{display:block;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
+    .form-status.err{display:block;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fecaca}
+    .form-status.info{display:block;background:rgba(85,216,255,.10);border:1px solid rgba(85,216,255,.30);color:#b8f2ff}
+
     @media(max-width:1080px){.hero-grid,.gallery,.grid2{grid-template-columns:1fr}.grid5{grid-template-columns:repeat(2,1fr)}.grid3,.report-strip{grid-template-columns:1fr 1fr}.h1{font-size:52px}.stats{grid-template-columns:1fr}.feature-list{grid-template-columns:1fr}.hero-overlay{grid-template-columns:1fr}.nav-inner{height:auto;padding:14px 0;align-items:flex-start;flex-direction:column}.menu{width:100%}}
 
     .brand-logo-img{height:42px;width:42px;object-fit:cover;border-radius:13px;border:1px solid rgba(243,161,26,.28);box-shadow:0 0 26px rgba(243,161,26,.18)}
     .footer-logo{width:78px;height:78px;object-fit:cover;border-radius:22px;border:1px solid rgba(243,161,26,.22);box-shadow:0 0 40px rgba(243,161,26,.16);display:block;margin:0 auto 14px}
     .mailto-link{color:#b8f2ff;font-weight:900}
+
+
+    .form-status{grid-column:1/-1;margin-top:4px;border-radius:16px;padding:13px 15px;font-size:14px;line-height:1.5;display:none}
+    .form-status.ok{display:block;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
+    .form-status.err{display:block;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fecaca}
+    .form-status.info{display:block;background:rgba(85,216,255,.10);border:1px solid rgba(85,216,255,.30);color:#b8f2ff}
 
     @media(max-width:640px){.grid3,.report-strip,.form,.grid5{grid-template-columns:1fr}.h1{font-size:40px}.section h2{font-size:32px}.wrap{padding:0 16px}.hero-visual img{min-height:420px}}
   </style>
@@ -76,7 +88,23 @@
 
     <section class="section"><div class="wrap grid2"><div class="card"><h2>Engineering features</h2><div class="feature-list"><div>Equivalent diameter calculation</div><div>D50 / D80 / D90 analysis</div><div>Rosin–Rammler PSD curve</div><div>Segmentation review image</div><div>PDF / Excel export</div><div>Offline license control</div><div>SAM assisted workflow</div><div>YOLO model integration</div></div></div><div class="card"><h2>License packages</h2><div class="feature-list"><div><b>Trial:</b> 7 days, SAM + PDF</div><div><b>Standard:</b> SAM + PDF + Excel</div><div><b>Pro:</b> SAM + YOLO + Batch</div><div><b>Enterprise:</b> all modules + custom support</div></div></div></div></section>
 
-    <section id="license-form" class="section"><div class="wrap"><div class="contact"><h2>Request a FragSmart AI license</h2><p class="sub" style="margin:12px auto 0">Send company details and Machine ID. License requests are handled via <a class="mailto-link" href="mailto:support@fsengineeringai.com?subject=FS%20Engineering%20AI%20Support%20Request">support@fsengineeringai.com</a>.</p><div class="form"><input placeholder="Company Name"><input placeholder="Customer Name"><input placeholder="Email"><input placeholder="Phone"><input placeholder="Machine ID"><select><option>Trial - 7 days</option><option>Standard</option><option>Pro</option><option>Enterprise</option></select><textarea placeholder="Message"></textarea><a class="btn full" href="mailto:support@fsengineeringai.com?subject=FragSmart%20AI%20License%20Request&body=Company Name:%0D%0ACustomer Name:%0D%0AEmail:%0D%0APhone:%0D%0AMachine ID:%0D%0ARequested Package:%0D%0AMessage:">Send License Request</a></div><div class="note">Our team will review your request and contact you with license activation details.</div></div></div></section>
+    <section id="license-form" class="section"><div class="wrap"><div class="contact"><h2>Request a FragSmart AI license</h2><p class="sub" style="margin:12px auto 0">Send company details and Machine ID. License requests are handled via <a class="mailto-link" href="mailto:support@fsengineeringai.com?subject=FS%20Engineering%20AI%20Support%20Request">support@fsengineeringai.com</a>.</p><form class="form" id="licenseRequestForm">
+  <input id="companyName" name="company_name" placeholder="Company Name" required>
+  <input id="customerName" name="customer_name" placeholder="Customer Name" required>
+  <input id="email" name="email" type="email" placeholder="Email" required>
+  <input id="phone" name="phone" placeholder="Phone">
+  <input id="machineId" name="machine_id" placeholder="Machine ID">
+  <select id="requestedPackage" name="requested_package">
+    <option>Trial</option>
+    <option>Standard</option>
+    <option>Pro</option>
+    <option>Enterprise</option>
+    <option>Demo</option>
+  </select>
+  <textarea id="message" name="message" placeholder="Message"></textarea>
+  <button class="btn full" id="licenseSubmitBtn" type="submit">Send License Request</button>
+  <div id="licenseFormStatus" class="form-status"></div>
+</form><div class="note">Your request will be securely recorded and reviewed by FS Engineering AI.</div></div></div></section>
   </main>
 
   <main id="mineops" class="page">
@@ -95,5 +123,65 @@
       window.scrollTo({top:0,behavior:'smooth'});
     }
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    const FS_SUPABASE_URL = "https://jxypwsgjpwfzwgzipykn.supabase.co";
+    const FS_SUPABASE_KEY = "sb_publishable_TssaLxEGahmUQZJYSTy4pQ_1GgufMLP";
+    const fsSupabase = window.supabase.createClient(FS_SUPABASE_URL, FS_SUPABASE_KEY);
+
+    const licenseForm = document.getElementById("licenseRequestForm");
+    const licenseStatus = document.getElementById("licenseFormStatus");
+    const licenseSubmitBtn = document.getElementById("licenseSubmitBtn");
+
+    function setLicenseStatus(type, message) {
+      if (!licenseStatus) return;
+      licenseStatus.className = "form-status " + type;
+      licenseStatus.textContent = message;
+    }
+
+    if (licenseForm) {
+      licenseForm.addEventListener("submit", async function(event) {
+        event.preventDefault();
+        setLicenseStatus("info", "Submitting your request...");
+        if (licenseSubmitBtn) {
+          licenseSubmitBtn.disabled = true;
+          licenseSubmitBtn.textContent = "Submitting...";
+        }
+
+        const payload = {
+          request_type: "license",
+          product: "FragSmart AI",
+          company_name: document.getElementById("companyName").value.trim(),
+          customer_name: document.getElementById("customerName").value.trim(),
+          email: document.getElementById("email").value.trim(),
+          phone: document.getElementById("phone").value.trim(),
+          machine_id: document.getElementById("machineId").value.trim(),
+          requested_package: document.getElementById("requestedPackage").value,
+          message: document.getElementById("message").value.trim(),
+          source: "website",
+          status: "pending"
+        };
+
+        const { error } = await fsSupabase
+          .from("license_requests")
+          .insert([payload]);
+
+        if (error) {
+          console.error(error);
+          setLicenseStatus("err", "The request could not be submitted. Please email support@fsengineeringai.com.");
+        } else {
+          licenseForm.reset();
+          setLicenseStatus("ok", "Your license request has been received. FS Engineering AI will contact you shortly.");
+        }
+
+        if (licenseSubmitBtn) {
+          licenseSubmitBtn.disabled = false;
+          licenseSubmitBtn.textContent = "Send License Request";
+        }
+      });
+    }
+  </script>
+
 </body>
 </html>
