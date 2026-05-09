@@ -54,30 +54,50 @@
     const FS_SUPABASE_URL = "https://jxypwsgjpwfzwgzipykn.supabase.co";
     const FS_SUPABASE_KEY = "sb_publishable_TssaLxEGahmUQZJYSTy4pQ_1GgufMLP";
     const fsSupabase = window.supabase.createClient(FS_SUPABASE_URL, FS_SUPABASE_KEY);
+
+    const LICENSE_TYPES = ["TRIAL_7", "STANDARD_ANNUAL", "PRO_ANNUAL", "ENTERPRISE_ANNUAL", "ENTERPRISE_LIFETIME"];
+    const MODULES = ["SAM", "YOLO", "PDF", "EXCEL", "BATCH"];
+    const DEFAULT_MODULES_BY_TYPE = {
+      TRIAL_7: ["SAM", "PDF"],
+      STANDARD_ANNUAL: ["SAM", "PDF", "EXCEL"],
+      PRO_ANNUAL: ["SAM", "YOLO", "PDF", "EXCEL", "BATCH"],
+      ENTERPRISE_ANNUAL: ["SAM", "YOLO", "PDF", "EXCEL", "BATCH"],
+      ENTERPRISE_LIFETIME: ["SAM", "YOLO", "PDF", "EXCEL", "BATCH"]
+    };
+    const DEFAULT_DAYS_BY_TYPE = {
+      TRIAL_7: 7,
+      STANDARD_ANNUAL: 365,
+      PRO_ANNUAL: 365,
+      ENTERPRISE_ANNUAL: 365,
+      ENTERPRISE_LIFETIME: 36500
+    };
+
     let requests = [];
     let currentAdminEmail = null;
 
-    function showNotice(message, isError=false){const n=document.getElementById('notice');n.textContent=message;n.className='notice'+(isError?' err':'');n.classList.remove('hidden');setTimeout(()=>n.classList.add('hidden'),6000)}
+    function showNotice(message, isError=false){const n=document.getElementById('notice');n.textContent=message;n.className='notice'+(isError?' err':'');n.classList.remove('hidden');setTimeout(()=>n.classList.add('hidden'),8000)}
     function escapeHtml(value){return String(value ?? '').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
     function formatDate(value){if(!value)return '-';try{return new Date(value).toLocaleString()}catch(e){return value}}
     function normalizeStatus(s){return (s || 'pending').toLowerCase()}
     function setLoginStatus(message, isError=false){const el=document.getElementById('loginStatus'); if(el){el.textContent=message; el.style.color=isError?'#fecaca':'#9aa9bd';}}
+    function packageToLicenseType(pkg){
+      const p=String(pkg||'').toLowerCase();
+      if(p.includes('trial') || p.includes('demo')) return 'TRIAL_7';
+      if(p.includes('standard')) return 'STANDARD_ANNUAL';
+      if(p.includes('enterprise')) return 'ENTERPRISE_ANNUAL';
+      if(p.includes('pro')) return 'PRO_ANNUAL';
+      return 'PRO_ANNUAL';
+    }
+    function modulesFor(type){return DEFAULT_MODULES_BY_TYPE[type] || DEFAULT_MODULES_BY_TYPE.PRO_ANNUAL}
+    function daysFor(type){return DEFAULT_DAYS_BY_TYPE[type] || 365}
+    function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}
 
     async function verifyAdminSession(){
       const { data:{ session } } = await fsSupabase.auth.getSession();
       if(!session || !session.user || !session.user.email){showLogin();return false;}
       const email=session.user.email;
-      const { data, error } = await fsSupabase
-        .from('admin_users')
-        .select('email, role')
-        .eq('email', email)
-        .maybeSingle();
-      if(error || !data){
-        await fsSupabase.auth.signOut();
-        showLogin();
-        setLoginStatus('This account is not authorized as admin.', true);
-        return false;
-      }
+      const { data, error } = await fsSupabase.from('admin_users').select('email, role').eq('email', email).maybeSingle();
+      if(error || !data){await fsSupabase.auth.signOut();showLogin();setLoginStatus('This account is not authorized as admin.', true);return false;}
       currentAdminEmail=email;
       document.getElementById('gate').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
@@ -86,11 +106,7 @@
       return true;
     }
 
-    function showLogin(){
-      document.getElementById('gate').classList.remove('hidden');
-      document.getElementById('app').classList.add('hidden');
-      currentAdminEmail=null;
-    }
+    function showLogin(){document.getElementById('gate').classList.remove('hidden');document.getElementById('app').classList.add('hidden');currentAdminEmail=null;}
 
     async function loginAdmin(){
       const email=document.getElementById('adminEmail').value.trim();
@@ -102,11 +118,7 @@
       await verifyAdminSession();
     }
 
-    async function logoutAdmin(){
-      await fsSupabase.auth.signOut();
-      location.reload();
-    }
-
+    async function logoutAdmin(){await fsSupabase.auth.signOut();location.reload();}
     document.addEventListener('DOMContentLoaded',()=>{verifyAdminSession()});
 
     async function loadRequests(){
@@ -132,109 +144,115 @@
     }
 
     function requestCard(r){
-      const id=escapeHtml(r.id);const st=normalizeStatus(r.status);const note=escapeHtml(r.admin_note||'');const days=escapeHtml(r.license_days||'30');
+      const id=escapeHtml(r.id);const sid=safeId(r.id);const st=normalizeStatus(r.status);const note=escapeHtml(r.admin_note||'');
+      const defaultType=packageToLicenseType(r.requested_package);const currentType=escapeHtml(r.license_type || defaultType);
+      const currentDays=escapeHtml(r.license_days || daysFor(currentType));
+      const maxVersion=escapeHtml(r.max_version || '1.0');
+      const selectedModules=modulesFor(currentType);
+      const typeOptions=LICENSE_TYPES.map(t=>`<option value="${t}" ${t===currentType?'selected':''}>${t}</option>`).join('');
+      const moduleChecks=MODULES.map(m=>`<label style="display:inline-flex;gap:6px;align-items:center;margin-right:12px;color:#d8e3f3;font-size:13px"><input type="checkbox" id="mod-${sid}-${m}" ${selectedModules.includes(m)?'checked':''}> ${m}</label>`).join('');
+      const licensePreview=r.license_key ? `<div class="message" style="word-break:break-all"><b>FSLIC2 License:</b> ${escapeHtml(r.license_key)}</div>` : '';
       return `<div class="request">
         <div class="request-head"><div><h3>${escapeHtml(r.company_name||'-')}</h3><div class="meta">${escapeHtml(r.customer_name||'-')} • ${escapeHtml(r.email||'-')} • ${formatDate(r.created_at)}</div></div><span class="status ${st}">${escapeHtml(st)}</span></div>
         <div class="details">
-          <div class="kv"><small>Package</small><b>${escapeHtml(r.requested_package||'-')}</b></div>
+          <div class="kv"><small>Requested Package</small><b>${escapeHtml(r.requested_package||'-')}</b></div>
           <div class="kv"><small>Machine ID</small><b>${escapeHtml(r.machine_id||'-')}</b></div>
           <div class="kv"><small>Phone</small><b>${escapeHtml(r.phone||'-')}</b></div>
-          <div class="kv"><small>License Key</small><b id="lk-${id}">${escapeHtml(r.license_key||'-')}</b></div>
+          <div class="kv"><small>License ID</small><b>${escapeHtml(r.license_id||'-')}</b></div>
           <div class="kv"><small>License Days</small><b>${escapeHtml(r.license_days||'-')}</b></div>
           <div class="kv"><small>Processed</small><b>${escapeHtml(r.processed_by||'-')}</b></div>
         </div>
         <div class="message">${escapeHtml(r.message||'No message')}</div>
-        <div class="actions"><textarea id="note-${id}" placeholder="Admin note">${note}</textarea><input id="days-${id}" class="input" type="number" min="1" value="${days}" placeholder="Days"></div>
+        ${licensePreview}
+        <div class="actions" style="grid-template-columns:1fr 180px 160px 130px">
+          <textarea id="note-${id}" placeholder="Admin note">${note}</textarea>
+          <select id="type-${id}" onchange="applyTypeDefaults('${id}')">${typeOptions}</select>
+          <input id="days-${id}" class="input" type="number" min="1" value="${currentDays}" placeholder="Days">
+          <input id="max-${id}" class="input" value="${maxVersion}" placeholder="Max Version">
+        </div>
+        <div style="margin-top:10px;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:10px;background:rgba(255,255,255,.035)">
+          <div class="meta" style="margin-bottom:8px">Modules</div>${moduleChecks}
+        </div>
         <div class="action-row">
           <button class="btn secondary" onclick="saveNote('${id}')">Save Note</button>
-          <button class="btn secondary" onclick="generateKey('${id}')">Generate Key</button>
-          <button class="btn ok" onclick="approveRequest('${id}')">Approve</button>
+          <button class="btn ok" onclick="approveRequest('${id}')">Approve + Generate FSLIC2</button>
+          <button class="btn secondary" onclick="copyLicense('${id}')">Copy License</button>
           <button class="btn danger" onclick="rejectRequest('${id}')">Reject</button>
         </div>
       </div>`
     }
 
-    function makeLicenseKey(row){
-      const prefix='FSAI';const company=(row.company_name||'CLIENT').replace(/[^a-z0-9]/gi,'').toUpperCase().slice(0,6)||'CLIENT';const machine=(row.machine_id||'MACHINE').replace(/[^a-z0-9]/gi,'').toUpperCase().slice(-6)||'MACH';
-      const rnd=crypto.getRandomValues(new Uint32Array(2));const token=[rnd[0].toString(36),rnd[1].toString(36)].join('').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12);
-      return `${prefix}-${company}-${machine}-${token.match(/.{1,4}/g).join('-')}`;
+    function applyTypeDefaults(id){
+      const type=document.getElementById('type-'+id).value;
+      const sid=safeId(id);
+      const daysEl=document.getElementById('days-'+id);
+      if(daysEl) daysEl.value=daysFor(type);
+      MODULES.forEach(m=>{const el=document.getElementById(`mod-${sid}-${m}`); if(el) el.checked=modulesFor(type).includes(m);});
+    }
+
+    function selectedModules(id){
+      const sid=safeId(id);
+      return MODULES.filter(m=>{const el=document.getElementById(`mod-${sid}-${m}`); return el && el.checked;});
     }
 
     async function saveNote(id){
-      const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'0',10)||null;
-      const {error}=await fsSupabase.from('license_requests').update({admin_note:note,license_days:days,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
-      if(error){showNotice(error.message,true);return}showNotice('Admin note saved.');await loadRequests();
+      const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'0',10)||null;const type=document.getElementById('type-'+id).value;const maxVersion=document.getElementById('max-'+id).value.trim() || '1.0';
+      const {error}=await fsSupabase.from('license_requests').update({admin_note:note,license_days:days,license_type:type,max_version:maxVersion,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
+      if(error){showNotice(error.message,true);return}showNotice('Admin note and license settings saved.');await loadRequests();
     }
 
-    async function generateKey(id){
-      const row=requests.find(r=>String(r.id)===String(id));if(!row)return;
-      const key=makeLicenseKey(row);const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
-      const {error}=await fsSupabase.from('license_requests').update({license_key:key,license_days:days,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
-      if(error){showNotice(error.message,true);return}showNotice('License key generated.');await loadRequests();
+    async function copyLicense(id){
+      const row=requests.find(r=>String(r.id)===String(id));
+      if(!row || !row.license_key){showNotice('No generated license key found for this request yet.', true);return;}
+      try{await navigator.clipboard.writeText(row.license_key);showNotice('License copied to clipboard.')}catch(e){showNotice('Could not copy license.', true)}
     }
 
     async function approveRequest(id){
-      const row=requests.find(r=>String(r.id)===String(id));
-      if(!row)return;
-
-      const key=row.license_key || makeLicenseKey(row);
+      const row=requests.find(r=>String(r.id)===String(id));if(!row)return;
       const note=document.getElementById('note-'+id).value.trim();
       const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
-      const adminEmail=currentAdminEmail || 'FS Engineering AI Admin';
+      const type=document.getElementById('type-'+id).value;
+      const maxVersion=document.getElementById('max-'+id).value.trim() || '1.0';
+      const modules=selectedModules(id);
+      if(!modules.length){showNotice('Select at least one module.', true);return;}
+      if(!row.machine_id){showNotice('Machine ID is required for FSLIC2 license generation.', true);return;}
+      if(!confirm('Approve this request and generate a signed FSLIC2 license?'))return;
 
-      const {error}=await fsSupabase
-        .from('license_requests')
-        .update({
-          status:'approved',
-          license_key:key,
-          license_days:days,
-          admin_note:note,
-          approved_at:new Date().toISOString(),
-          rejected_at:null,
-          processed_by:adminEmail
-        })
-        .eq('id',id);
-
-      if(error){
-        showNotice(error.message,true);
-        return;
-      }
+      const {error}=await fsSupabase.from('license_requests').update({
+        status:'approved',
+        license_days:days,
+        license_type:type,
+        max_version:maxVersion,
+        admin_note:note,
+        approved_at:new Date().toISOString(),
+        rejected_at:null,
+        processed_by: currentAdminEmail || 'FS Engineering AI Admin'
+      }).eq('id',id);
+      if(error){showNotice(error.message,true);return}
 
       try{
-        const res=await fetch('https://jxypwsgjpwfzwgzipykn.supabase.co/functions/v1/generate-license',{
+        const res=await fetch(`${FS_SUPABASE_URL}/functions/v1/generate-license`,{
           method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'Authorization':'Bearer sb_publishable_TssaLxEGahmUQZJYSTy4pQ_1GgufMLP'
-          },
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+FS_SUPABASE_KEY},
           body:JSON.stringify({
-            request_id:row.id,
-            customer_name:row.customer_name,
-            company_name:row.company_name,
-            email:row.email,
-            machine_id:row.machine_id,
-            product:row.product || 'FragSmart AI',
-            license_key:key,
-            duration_days:days,
-            generated_by:adminEmail
+            request_id: row.id,
+            customer_name: row.customer_name,
+            company_name: row.company_name,
+            email: row.email,
+            machine_id: row.machine_id,
+            product: row.product || 'FragSmart AI',
+            license_type: type,
+            duration_days: days,
+            modules,
+            max_version: maxVersion,
+            admin_note: note,
+            generated_by: currentAdminEmail || 'FS Engineering AI Admin'
           })
         });
-
         const result=await res.json();
-
-        if(!res.ok){
-          console.error('generate-license error:',result);
-          showNotice('Request approved, but license generation failed: '+JSON.stringify(result),true);
-          await loadRequests();
-          return;
-        }
-
-        showNotice('Request approved, license generated, and customer email sent.');
-      }catch(err){
-        console.error('generate-license function failed:',err);
-        showNotice('Request approved, but generate-license function failed.',true);
-      }
-
+        if(!res.ok){console.error(result);showNotice('Approved, but FSLIC2 generation failed: '+JSON.stringify(result), true);await loadRequests();return;}
+        showNotice('FSLIC2 license generated, saved, and emailed to customer.');
+      }catch(err){console.error(err);showNotice('Approved, but generate-license function failed.', true)}
       await loadRequests();
     }
 
