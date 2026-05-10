@@ -23,7 +23,7 @@
 
     <div id="app" class="hidden">
       <div class="top">
-        <div class="brand"><img class="logo" src="assets/fs_engineering_logo.png" alt="FS Engineering AI"><div><h1>License Requests Admin Panel</h1><p>Manage FragSmart AI license requests, approvals, rejections, and license keys.</p></div></div>
+        <div class="brand"><img class="logo" src="assets/fs_engineering_logo.png" alt="FS Engineering AI"><div><h1>License Requests Admin Panel</h1><p>Manage FSLIC2 licenses, seats, approvals, rejections, device resets, and usage monitoring.</p></div></div>
         <div class="toolbar"><span class="meta" id="adminIdentity"></span><button class="btn secondary" onclick="loadAdminData()">Refresh</button><button class="btn secondary" onclick="location.href='index.html'">Website</button><button class="btn danger" onclick="logoutAdmin()">Sign Out</button></div>
       </div>
 
@@ -49,8 +49,6 @@
           <div id="generatedLicenseList" class="request-list"><div class="empty">Loading licenses...</div></div>
           <div class="request-head" style="margin:30px 0 14px"><h2 style="margin:0">License Usage Monitor</h2><span class="meta" id="usageLastLoaded">Not loaded</span></div>
           <div id="usageMonitorList" class="request-list"><div class="empty">Loading usage monitor...</div></div>
-          <div class="request-head" style="margin:30px 0 14px"><h2 style="margin:0">Device Reset History</h2><span class="meta" id="resetHistoryLastLoaded">Not loaded</span></div>
-          <div id="resetHistoryList" class="request-list"><div class="empty">Loading reset history...</div></div>
         </main>
       </div>
     </div>
@@ -77,11 +75,17 @@
       ENTERPRISE_ANNUAL: 365,
       ENTERPRISE_LIFETIME: 36500
     };
+    const DEFAULT_DEVICES_BY_TYPE = {
+      TRIAL_7: 1,
+      STANDARD_ANNUAL: 1,
+      PRO_ANNUAL: 2,
+      ENTERPRISE_ANNUAL: 5,
+      ENTERPRISE_LIFETIME: 5
+    };
 
     let requests = [];
     let generatedLicenses = [];
     let usageRows = [];
-    let resetHistoryRows = [];
     let currentAdminEmail = null;
 
     function showNotice(message, isError=false){const n=document.getElementById('notice');n.textContent=message;n.className='notice'+(isError?' err':'');n.classList.remove('hidden');setTimeout(()=>n.classList.add('hidden'),8000)}
@@ -99,6 +103,7 @@
     }
     function modulesFor(type){return DEFAULT_MODULES_BY_TYPE[type] || DEFAULT_MODULES_BY_TYPE.PRO_ANNUAL}
     function daysFor(type){return DEFAULT_DAYS_BY_TYPE[type] || 365}
+    function devicesFor(type){return DEFAULT_DEVICES_BY_TYPE[type] || 1}
     function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}
 
     async function verifyAdminSession(){
@@ -135,7 +140,6 @@
       await loadRequests();
       await loadGeneratedLicenses();
       await loadUsageMonitor();
-      await loadDeviceResetHistory();
     }
 
     async function loadRequests(){
@@ -165,6 +169,7 @@
       const defaultType=packageToLicenseType(r.requested_package);const currentType=escapeHtml(r.license_type || defaultType);
       const currentDays=escapeHtml(r.license_days || daysFor(currentType));
       const maxVersion=escapeHtml(r.max_version || '1.0');
+      const allowedDevices=escapeHtml(r.allowed_devices || devicesFor(currentType));
       const selectedModules=modulesFor(currentType);
       const typeOptions=LICENSE_TYPES.map(t=>`<option value="${t}" ${t===currentType?'selected':''}>${t}</option>`).join('');
       const moduleChecks=MODULES.map(m=>`<label style="display:inline-flex;gap:6px;align-items:center;margin-right:12px;color:#d8e3f3;font-size:13px"><input type="checkbox" id="mod-${sid}-${m}" ${selectedModules.includes(m)?'checked':''}> ${m}</label>`).join('');
@@ -177,14 +182,16 @@
           <div class="kv"><small>Phone</small><b>${escapeHtml(r.phone||'-')}</b></div>
           <div class="kv"><small>License ID</small><b>${escapeHtml(r.license_id||'-')}</b></div>
           <div class="kv"><small>License Days</small><b>${escapeHtml(r.license_days||'-')}</b></div>
+          <div class="kv"><small>Allowed Devices</small><b>${escapeHtml(r.allowed_devices || '-')}</b></div>
           <div class="kv"><small>Processed</small><b>${escapeHtml(r.processed_by||'-')}</b></div>
         </div>
         <div class="message">${escapeHtml(r.message||'No message')}</div>
         ${licensePreview}
-        <div class="actions" style="grid-template-columns:1fr 180px 160px 130px">
+        <div class="actions" style="grid-template-columns:1fr 180px 130px 130px 130px">
           <textarea id="note-${id}" placeholder="Admin note">${note}</textarea>
           <select id="type-${id}" onchange="applyTypeDefaults('${id}')">${typeOptions}</select>
           <input id="days-${id}" class="input" type="number" min="1" value="${currentDays}" placeholder="Days">
+          <input id="devices-${id}" class="input" type="number" min="1" value="${allowedDevices}" placeholder="Devices">
           <input id="max-${id}" class="input" value="${maxVersion}" placeholder="Max Version">
         </div>
         <div style="margin-top:10px;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:10px;background:rgba(255,255,255,.035)">
@@ -203,7 +210,9 @@
       const type=document.getElementById('type-'+id).value;
       const sid=safeId(id);
       const daysEl=document.getElementById('days-'+id);
+      const devicesEl=document.getElementById('devices-'+id);
       if(daysEl) daysEl.value=daysFor(type);
+      if(devicesEl) devicesEl.value=devicesFor(type);
       MODULES.forEach(m=>{const el=document.getElementById(`mod-${sid}-${m}`); if(el) el.checked=modulesFor(type).includes(m);});
     }
 
@@ -213,8 +222,8 @@
     }
 
     async function saveNote(id){
-      const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'0',10)||null;const type=document.getElementById('type-'+id).value;const maxVersion=document.getElementById('max-'+id).value.trim() || '1.0';
-      const {error}=await fsSupabase.from('license_requests').update({admin_note:note,license_days:days,license_type:type,max_version:maxVersion,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
+      const note=document.getElementById('note-'+id).value.trim();const days=parseInt(document.getElementById('days-'+id).value||'0',10)||null;const type=document.getElementById('type-'+id).value;const maxVersion=document.getElementById('max-'+id).value.trim() || '1.0';const allowedDevices=parseInt(document.getElementById('devices-'+id).value||'1',10)||1;
+      const {error}=await fsSupabase.from('license_requests').update({admin_note:note,license_days:days,license_type:type,max_version:maxVersion,allowed_devices:allowedDevices,processed_by: currentAdminEmail || 'FS Engineering AI Admin'}).eq('id',id);
       if(error){showNotice(error.message,true);return}showNotice('Admin note and license settings saved.');await loadRequests();
     }
 
@@ -230,6 +239,7 @@
       const days=parseInt(document.getElementById('days-'+id).value||'30',10)||30;
       const type=document.getElementById('type-'+id).value;
       const maxVersion=document.getElementById('max-'+id).value.trim() || '1.0';
+      const allowedDevices=parseInt(document.getElementById('devices-'+id).value||'1',10)||1;
       const modules=selectedModules(id);
       if(!modules.length){showNotice('Select at least one module.', true);return;}
       if(!row.machine_id){showNotice('Machine ID is required for FSLIC2 license generation.', true);return;}
@@ -240,6 +250,7 @@
         license_days:days,
         license_type:type,
         max_version:maxVersion,
+        allowed_devices:allowedDevices,
         admin_note:note,
         approved_at:new Date().toISOString(),
         rejected_at:null,
@@ -262,6 +273,7 @@
             duration_days: days,
             modules,
             max_version: maxVersion,
+            allowed_devices: allowedDevices,
             admin_note: note,
             generated_by: currentAdminEmail || 'FS Engineering AI Admin'
           })
@@ -328,6 +340,7 @@
           <div class="kv"><small>Machine ID</small><b>${escapeHtml(row.machine_id || '-')}</b></div>
           <div class="kv"><small>Modules</small><b>${escapeHtml(modules)}</b></div>
           <div class="kv"><small>Max Version</small><b>${escapeHtml(row.max_version || '-')}</b></div>
+          <div class="kv"><small>Allowed Devices</small><b>${escapeHtml(row.allowed_devices || 1)}</b></div>
           <div class="kv"><small>Issued</small><b>${escapeHtml(row.issued_at || row.start_date || '-')}</b></div>
           <div class="kv"><small>Expires</small><b>${escapeHtml(row.expires_at || row.expiry_date || '-')}</b></div>
           <div class="kv"><small>Generated By</small><b>${escapeHtml(row.generated_by || '-')}</b></div>
@@ -421,7 +434,8 @@
       } else if(usageLevel === 'warning'){
         warning = `<div class="message" style="border-color:rgba(243,161,26,.45);background:rgba(243,161,26,.12);color:#fde68a"><b>Warning:</b> This license has been seen on 2 different machines. Confirm whether this is allowed for this customer.</div>`;
       }
-      const riskText = usageLevel === 'critical' ? 'Critical - possible sharing' : (usageLevel === 'warning' ? 'Warning - review' : 'OK');
+      const allowedDevices = Number(row.allowed_devices || 1);
+      const riskText = usageLevel === 'critical' ? `Critical - over ${allowedDevices} seats` : (usageLevel === 'warning' ? `Warning - over ${allowedDevices} seats` : `OK - within ${allowedDevices} seats`);
       return `<div class="request ${usageLevel === 'critical' ? 'usage-critical' : (usageLevel === 'warning' ? 'usage-warning' : '')}">
         <div class="request-head">
           <div><h3>${escapeHtml(row.company_name || '-')}</h3><div class="meta">${escapeHtml(row.customer_name || '-')} • Last seen: ${formatDate(row.last_seen)}</div></div>
@@ -430,6 +444,7 @@
         <div class="details">
           <div class="kv"><small>License ID</small><b>${escapeHtml(row.license_id || '-')}</b></div>
           <div class="kv"><small>Usage Level</small><b>${escapeHtml(usageLevel)}</b></div>
+          <div class="kv"><small>Allowed Devices</small><b>${escapeHtml(row.allowed_devices || 1)}</b></div>
           <div class="kv"><small>Unique Machines</small><b>${escapeHtml(machineCount)}</b></div>
           <div class="kv"><small>Total Heartbeats</small><b>${escapeHtml(row.total_heartbeats || 0)}</b></div>
           <div class="kv"><small>Last Seen</small><b>${formatDate(row.last_seen)}</b></div>
@@ -530,66 +545,10 @@
         }
         showNotice('Device history reset completed. Deleted heartbeats: ' + (result.deleted_heartbeats ?? 0));
         await loadUsageMonitor();
-        await loadDeviceResetHistory();
       }catch(err){
         console.error(err);
         showNotice('Device reset function failed.', true);
       }
-    }
-
-
-    async function loadDeviceResetHistory(){
-      const box = document.getElementById('resetHistoryList');
-      if(!box) return;
-      box.innerHTML = '<div class="empty">Loading reset history...</div>';
-      const { data, error } = await fsSupabase
-        .from('license_device_resets')
-        .select('*')
-        .order('reset_at', { ascending:false })
-        .limit(200);
-      if(error){
-        console.error(error);
-        box.innerHTML = '<div class="empty">Could not load device reset history. Check license_device_resets RLS policy.</div>';
-        showNotice('Could not load device reset history: ' + error.message, true);
-        return;
-      }
-      resetHistoryRows = data || [];
-      const el = document.getElementById('resetHistoryLastLoaded');
-      if(el) el.textContent = 'Loaded: ' + new Date().toLocaleString();
-      renderDeviceResetHistory();
-    }
-
-    function renderDeviceResetHistory(){
-      const box = document.getElementById('resetHistoryList');
-      if(!box) return;
-      if(!resetHistoryRows.length){
-        box.innerHTML = '<div class="empty">No device reset history yet.</div>';
-        return;
-      }
-      box.innerHTML = resetHistoryRows.map(row => resetHistoryCard(row)).join('');
-    }
-
-    function resetHistoryCard(row){
-      let machines = row.old_machine_ids || [];
-      if(typeof machines === 'string'){
-        try{ machines = JSON.parse(machines); } catch(e){ machines = machines.split(',').map(x => x.trim()).filter(Boolean); }
-      }
-      if(!Array.isArray(machines)) machines = [];
-      const machineList = machines.length ? machines.map(m => `<span class="tag">${escapeHtml(m)}</span>`).join(' ') : '-';
-      return `<div class="request">
-        <div class="request-head">
-          <div><h3>${escapeHtml(row.license_id || 'Device Reset')}</h3><div class="meta">Reset by ${escapeHtml(row.reset_by || '-')} • ${formatDate(row.reset_at)}</div></div>
-          <span class="status warning">device reset</span>
-        </div>
-        <div class="details">
-          <div class="kv"><small>License ID</small><b>${escapeHtml(row.license_id || '-')}</b></div>
-          <div class="kv"><small>Reset By</small><b>${escapeHtml(row.reset_by || '-')}</b></div>
-          <div class="kv"><small>Reset Date</small><b>${formatDate(row.reset_at)}</b></div>
-        </div>
-        <div class="message" style="word-break:break-all"><b>License Key:</b><br>${escapeHtml(String(row.license_key || '-'))}</div>
-        <div class="message"><b>Old Machine IDs:</b><br>${machineList}</div>
-        <div class="message"><b>Reset Reason:</b><br>${escapeHtml(row.reset_reason || '-')}</div>
-      </div>`;
     }
 
     async function rejectRequest(id){
