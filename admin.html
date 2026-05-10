@@ -436,6 +436,7 @@
         ${warning}
         <div class="action-row">
           <button class="btn secondary" onclick="copyUsageLicense('${escapeHtml(String(row.license_key || ''))}')">Copy License</button>
+          <button class="btn secondary" onclick="resetDeviceFromUsageMonitor('${escapeHtml(String(row.license_key || ''))}')">Reset Device</button>
           ${(usageLevel === 'warning' || usageLevel === 'critical') ? `<button class="btn danger" onclick="revokeFromUsageMonitor('${escapeHtml(String(row.license_key || ''))}')">Revoke From Monitor</button>` : ''}
         </div>
       </div>`;
@@ -481,6 +482,54 @@
       showNotice('License revoked from Usage Monitor.');
       await loadGeneratedLicenses();
       await loadUsageMonitor();
+    }
+
+
+    async function resetDeviceFromUsageMonitor(licenseKey){
+      if(!licenseKey || licenseKey === '-'){
+        showNotice('License key not found for this usage row.', true);
+        return;
+      }
+      const row = usageRows.find(x => String(x.license_key || '') === String(licenseKey));
+      if(!row){
+        showNotice('Usage row not found.', true);
+        return;
+      }
+      let machines = row.machine_ids || [];
+      if(typeof machines === 'string'){
+        try{ machines = JSON.parse(machines); } catch(e){ machines = machines.split(',').map(x => x.trim()).filter(Boolean); }
+      }
+      if(!Array.isArray(machines)) machines = [];
+
+      const reason = prompt('Device reset reason:', 'Customer changed PC / authorized device transfer');
+      if(reason === null) return;
+      const ok = confirm('This will clear heartbeat machine history for this license.\n\nThe license itself will remain active.\nThe next valid desktop check will create a fresh machine usage record.\n\nContinue?');
+      if(!ok) return;
+
+      try{
+        const res = await fetch(`${FS_SUPABASE_URL}/functions/v1/reset-license-device`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+FS_SUPABASE_KEY},
+          body:JSON.stringify({
+            license_key: licenseKey,
+            license_id: row.license_id || null,
+            old_machine_ids: machines,
+            reset_reason: reason.trim(),
+            reset_by: currentAdminEmail || 'FS Engineering AI Admin'
+          })
+        });
+        const result = await res.json();
+        if(!res.ok || !result.ok){
+          console.error(result);
+          showNotice('Device reset failed: ' + JSON.stringify(result), true);
+          return;
+        }
+        showNotice('Device history reset completed. Deleted heartbeats: ' + (result.deleted_heartbeats ?? 0));
+        await loadUsageMonitor();
+      }catch(err){
+        console.error(err);
+        showNotice('Device reset function failed.', true);
+      }
     }
 
     async function rejectRequest(id){
