@@ -45,6 +45,7 @@
             <button class="btn secondary" onclick="showPanel('requests')">📩 Requests</button>
             <button class="btn secondary" onclick="showPanel('licenses')">🔑 Generated Licenses</button>
             <button class="btn secondary" onclick="showPanel('usage')">🖥️ Usage Monitor</button>
+            <button class="btn secondary" onclick="showPanel('devices')">🧩 License Devices</button>
             <button class="btn secondary" onclick="showPanel('resets')">🔄 Reset History</button>
             <button class="btn secondary" onclick="showPanel('security')">🛡️ Security Events</button>
             <button class="btn secondary" onclick="showPanel('updates')">⬆️ Update Manager</button>
@@ -56,6 +57,7 @@
             <button class="tab-btn active" id="tab-requests" onclick="showPanel('requests')">Requests <span class="mini-pill" id="tabPendingCount">0</span></button>
             <button class="tab-btn" id="tab-licenses" onclick="showPanel('licenses')">Generated Licenses</button>
             <button class="tab-btn" id="tab-usage" onclick="showPanel('usage')">Usage Monitor</button>
+            <button class="tab-btn" id="tab-devices" onclick="showPanel('devices')">License Devices</button>
             <button class="tab-btn" id="tab-resets" onclick="showPanel('resets')">Reset History</button>
             <button class="tab-btn" id="tab-security" onclick="showPanel('security')">Security Events</button>
             <button class="tab-btn" id="tab-updates" onclick="showPanel('updates')">Update Manager</button>
@@ -75,6 +77,11 @@
           <section id="panel-usage" class="section-pane">
             <div class="section-title"><h2>License Usage Monitor</h2><div class="section-toolbar"><span class="meta" id="usageLastLoaded">Not loaded</span><button class="btn secondary" onclick="loadUsageMonitor()">Refresh Usage</button></div></div>
             <div id="usageMonitorList" class="request-list"><div class="empty">Loading usage monitor...</div></div>
+          </section>
+
+          <section id="panel-devices" class="section-pane">
+            <div class="section-title"><h2>License Devices</h2><div class="section-toolbar"><span class="meta" id="licenseDevicesLastLoaded">Not loaded</span><button class="btn secondary" onclick="loadLicenseDevices()">Refresh Devices</button></div></div>
+            <div id="licenseDeviceList" class="request-list"><div class="empty">Loading license devices...</div></div>
           </section>
 
           <section id="panel-resets" class="section-pane">
@@ -172,6 +179,7 @@
     let usageRows = [];
     let resetHistoryRows = [];
     let securityEventRows = [];
+    let licenseDeviceRows = [];
     let updateManifestRow = null;
     let revokeRuleRows = [];
     let currentAdminEmail = null;
@@ -200,6 +208,7 @@
       window.scrollTo({top:0, behavior:'smooth'});
       if(name==='licenses') loadGeneratedLicenses();
       if(name==='usage') loadUsageMonitor();
+      if(name==='devices') loadLicenseDevices();
       if(name==='resets') loadDeviceResetHistory();
       if(name==='security') loadSecurityEvents();
       if(name==='updates') loadUpdateManifest();
@@ -240,6 +249,7 @@
       await loadRequests();
       await loadGeneratedLicenses();
       await loadUsageMonitor();
+      await loadLicenseDevices();
       await loadDeviceResetHistory();
       await loadSecurityEvents();
       await loadUpdateManifest();
@@ -439,6 +449,7 @@
         <div class="details">
           <div class="kv"><small>License ID</small><b>${escapeHtml(row.license_id || '-')}</b></div>
           <div class="kv"><small>License Type</small><b>${escapeHtml(row.license_type || '-')}</b></div>
+          <div class="kv"><small>Allowed Devices</small><b>${escapeHtml(row.allowed_devices || row.max_devices || '-')}</b></div>
           <div class="kv"><small>Product</small><b>${escapeHtml(row.product || '-')}</b></div>
           <div class="kv"><small>Machine ID</small><b>${escapeHtml(row.machine_id || '-')}</b></div>
           <div class="kv"><small>Modules</small><b>${escapeHtml(modules)}</b></div>
@@ -652,6 +663,97 @@
       }
     }
 
+
+
+    async function loadLicenseDevices(){
+      const box = document.getElementById('licenseDeviceList');
+      if(!box) return;
+      box.innerHTML = '<div class="empty">Loading license devices...</div>';
+      const { data, error } = await fsSupabase
+        .from('v_license_device_summary')
+        .select('*')
+        .order('last_seen_at', { ascending:false, nullsFirst:false })
+        .limit(200);
+      if(error){
+        console.error(error);
+        box.innerHTML = '<div class="empty">Could not load license devices. Run v4 multi-device SQL and check RLS grants.</div>';
+        showNotice('Could not load license devices: ' + error.message, true);
+        return;
+      }
+      licenseDeviceRows = data || [];
+      const el=document.getElementById('licenseDevicesLastLoaded'); if(el) el.textContent='Loaded: '+new Date().toLocaleString();
+      renderLicenseDevices();
+    }
+
+    function renderLicenseDevices(){
+      const box=document.getElementById('licenseDeviceList'); if(!box) return;
+      if(!licenseDeviceRows.length){ box.innerHTML='<div class="empty">No registered license devices yet. Devices will appear after license-device-check runs from the desktop app.</div>'; return; }
+      box.innerHTML = licenseDeviceRows.map(row=>licenseDeviceCard(row)).join('');
+    }
+
+    function licenseDeviceCard(row){
+      let devices = row.devices || [];
+      if(typeof devices === 'string'){ try{devices=JSON.parse(devices)}catch(e){devices=[]} }
+      if(!Array.isArray(devices)) devices=[];
+      const active = Number(row.active_devices || 0);
+      const allowed = Number(row.allowed_devices || 1);
+      const level = active > allowed ? 'critical' : (active === allowed ? 'warning' : 'active');
+      const deviceHtml = devices.length ? devices.map(d=>{
+        const st=String(d.status||'active').toLowerCase();
+        const did=escapeHtml(d.id || '');
+        const revokeBtn = st === 'revoked' ? '<button class="btn secondary" disabled>Device Revoked</button>' : `<button class="btn danger" onclick="revokeLicenseDevice('${did}')">Revoke Device</button>`;
+        const resetBtn = st === 'revoked' ? `<button class="btn ok" onclick="reactivateLicenseDevice('${did}')">Reactivate Device</button>` : '';
+        return `<div class="message" style="word-break:break-all">
+          <b>${escapeHtml(d.machine_id || '-')}</b> <span class="status ${st==='revoked'?'revoked':'active'}">${escapeHtml(st)}</span><br>
+          App: ${escapeHtml(d.app_version || '-')} • First: ${formatDate(d.first_seen_at)} • Last: ${formatDate(d.last_seen_at)}<br>
+          IP: ${escapeHtml(d.last_ip || '-')} ${d.revoke_reason ? '<br>Reason: '+escapeHtml(d.revoke_reason) : ''}
+          <div class="action-row">${revokeBtn}${resetBtn}</div>
+        </div>`;
+      }).join('') : '<div class="message">No device registered yet.</div>';
+      return `<div class="request ${level==='critical'?'usage-critical':(level==='warning'?'usage-warning':'')}">
+        <div class="request-head"><div><h3>${escapeHtml(row.company_name || '-')}</h3><div class="meta">${escapeHtml(row.customer_name || '-')} • ${escapeHtml(row.email || '-')}</div></div><span class="status ${level}">${active}/${allowed} devices</span></div>
+        <div class="details">
+          <div class="kv"><small>License ID</small><b>${escapeHtml(row.license_id || '-')}</b></div>
+          <div class="kv"><small>License Type</small><b>${escapeHtml(row.license_type || '-')}</b></div>
+          <div class="kv"><small>Allowed Devices</small><b>${escapeHtml(row.allowed_devices || row.max_devices || '-')}</b></div>
+          <div class="kv"><small>License Status</small><b>${escapeHtml(row.license_status || '-')}</b></div>
+          <div class="kv"><small>Allowed Devices</small><b><input id="allowed-${escapeHtml(row.license_row_id)}" class="input" type="number" min="1" value="${allowed}" style="padding:8px;border-radius:12px"></b></div>
+          <div class="kv"><small>Active Devices</small><b>${active}</b></div>
+          <div class="kv"><small>Last Seen</small><b>${formatDate(row.last_seen_at)}</b></div>
+        </div>
+        <div class="message" style="word-break:break-all"><b>License Key:</b><br>${escapeHtml(row.license_key || '-')}</div>
+        <div class="action-row"><button class="btn secondary" onclick="copyUsageLicense('${escapeHtml(String(row.license_key || ''))}')">Copy License</button><button class="btn ok" onclick="saveAllowedDevices('${escapeHtml(row.license_row_id)}')">Save Device Limit</button></div>
+        ${deviceHtml}
+      </div>`;
+    }
+
+    async function saveAllowedDevices(licenseRowId){
+      const el=document.getElementById('allowed-'+licenseRowId);
+      const value=parseInt(el?.value||'1',10)||1;
+      const { error } = await fsSupabase.from('generated_licenses').update({allowed_devices:value, max_devices:value}).eq('id', licenseRowId);
+      if(error){showNotice(error.message,true);return;}
+      showNotice('Device limit updated.');
+      await loadLicenseDevices();
+    }
+
+    async function revokeLicenseDevice(deviceId){
+      if(!deviceId){showNotice('Device id not found.', true);return;}
+      const reason = prompt('Device revoke reason:', 'Device revoked by admin');
+      if(reason === null) return;
+      const { error } = await fsSupabase.from('license_devices').update({status:'revoked', revoked_at:new Date().toISOString(), revoked_by: currentAdminEmail || 'FS Engineering AI Admin', revoke_reason: reason.trim()}).eq('id', deviceId);
+      if(error){showNotice(error.message,true);return;}
+      showNotice('Device revoked.');
+      await loadLicenseDevices();
+    }
+
+    async function reactivateLicenseDevice(deviceId){
+      if(!deviceId){showNotice('Device id not found.', true);return;}
+      if(!confirm('Reactivate this device?')) return;
+      const { error } = await fsSupabase.from('license_devices').update({status:'active', revoked_at:null, revoked_by:null, revoke_reason:null}).eq('id', deviceId);
+      if(error){showNotice(error.message,true);return;}
+      showNotice('Device reactivated.');
+      await loadLicenseDevices();
+    }
 
     async function loadDeviceResetHistory(){
       const box = document.getElementById('deviceResetHistoryList');
