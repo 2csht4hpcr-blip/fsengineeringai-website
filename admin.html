@@ -201,7 +201,7 @@
     function daysFor(type){return DEFAULT_DAYS_BY_TYPE[type] || 365}
     function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}
     function showPanel(name){
-      ['requests','licenses','usage','resets','security','updates','revoke'].forEach(p=>{
+      ['requests','licenses','usage','devices','resets','security','updates','revoke'].forEach(p=>{
         const pane=document.getElementById('panel-'+p); if(pane) pane.classList.toggle('active', p===name);
         const tab=document.getElementById('tab-'+p); if(tab) tab.classList.toggle('active', p===name);
       });
@@ -701,8 +701,8 @@
       const deviceHtml = devices.length ? devices.map(d=>{
         const st=String(d.status||'active').toLowerCase();
         const did=escapeHtml(d.id || '');
-        const revokeBtn = st === 'revoked' ? '<button class="btn secondary" disabled>Device Revoked</button>' : `<button class="btn danger" onclick="revokeLicenseDevice('${did}')">Revoke Device</button>`;
-        const resetBtn = st === 'revoked' ? `<button class="btn ok" onclick="reactivateLicenseDevice('${did}')">Reactivate Device</button>` : '';
+        const revokeBtn = !did ? '<button class="btn secondary" disabled>Device ID Missing</button>' : (st === 'revoked' ? '<button class="btn secondary" disabled>Device Revoked</button>' : `<button class="btn danger" onclick="revokeLicenseDevice('${did}')">Revoke Device</button>`);
+        const resetBtn = (!did) ? '' : (st === 'revoked' ? `<button class="btn ok" onclick="reactivateLicenseDevice('${did}')">Reactivate Device</button>` : '');
         return `<div class="message" style="word-break:break-all">
           <b>${escapeHtml(d.machine_id || '-')}</b> <span class="status ${st==='revoked'?'revoked':'active'}">${escapeHtml(st)}</span><br>
           App: ${escapeHtml(d.app_version || '-')} • First: ${formatDate(d.first_seen_at)} • Last: ${formatDate(d.last_seen_at)}<br>
