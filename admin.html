@@ -47,6 +47,8 @@
             <button class="btn secondary" onclick="showPanel('usage')">🖥️ Usage Monitor</button>
             <button class="btn secondary" onclick="showPanel('resets')">🔄 Reset History</button>
             <button class="btn secondary" onclick="showPanel('security')">🛡️ Security Events</button>
+            <button class="btn secondary" onclick="showPanel('updates')">⬆️ Update Manager</button>
+            <button class="btn secondary" onclick="showPanel('revoke')">⛔ Revoke Center</button>
           </div>
         </aside>
         <main class="main">
@@ -56,6 +58,8 @@
             <button class="tab-btn" id="tab-usage" onclick="showPanel('usage')">Usage Monitor</button>
             <button class="tab-btn" id="tab-resets" onclick="showPanel('resets')">Reset History</button>
             <button class="tab-btn" id="tab-security" onclick="showPanel('security')">Security Events</button>
+            <button class="tab-btn" id="tab-updates" onclick="showPanel('updates')">Update Manager</button>
+            <button class="tab-btn" id="tab-revoke" onclick="showPanel('revoke')">Revoke Center</button>
           </div>
 
           <section id="panel-requests" class="section-pane active">
@@ -81,6 +85,60 @@
           <section id="panel-security" class="section-pane">
             <div class="section-title"><h2>Security Events</h2><div class="section-toolbar"><span class="meta" id="securityEventsLastLoaded">Not loaded</span><button class="btn secondary" onclick="runSecurityScan(false)">Scan</button><button class="btn danger" onclick="runSecurityScan(true)">Scan + Auto Revoke Critical</button></div></div>
             <div id="securityEventsList" class="request-list"><div class="empty">Loading security events...</div></div>
+          </section>
+
+          <section id="panel-updates" class="section-pane">
+            <div class="section-title">
+              <h2>Update Manager</h2>
+              <div class="section-toolbar">
+                <span class="meta" id="updateManagerLastLoaded">Not loaded</span>
+                <button class="btn secondary" onclick="loadUpdateManifest()">Refresh</button>
+                <button class="btn ok" onclick="saveUpdateManifest()">Save Manifest</button>
+              </div>
+            </div>
+            <div class="notice">This controls the cloud update manifest used by FragSmart AI updater. Keep <b>latest_version</b>, <b>download_url</b>, and <b>file_sha256</b> accurate before publishing.</div>
+            <div class="request">
+              <div class="details">
+                <div class="kv"><small>Product</small><input id="updProduct" class="input" value="FragSmart AI"></div>
+                <div class="kv"><small>Latest Version</small><input id="updLatestVersion" class="input" placeholder="1.0.1"></div>
+                <div class="kv"><small>Min Supported Version</small><input id="updMinSupportedVersion" class="input" placeholder="1.0.0"></div>
+                <div class="kv"><small>Mandatory Update</small><select id="updMandatory"><option value="false">false</option><option value="true">true</option></select></div>
+                <div class="kv"><small>Hard Revoke</small><select id="updHardRevoke"><option value="false">false</option><option value="true">true</option></select></div>
+                <div class="kv"><small>Release Date</small><input id="updReleaseDate" class="input" type="date"></div>
+              </div>
+              <div class="details" style="grid-template-columns:1fr 1fr">
+                <div class="kv"><small>Download URL</small><input id="updDownloadUrl" class="input" placeholder="https://fsengineeringai.com/downloads/FragSmart_AI_Setup_v1.0.1.exe"></div>
+                <div class="kv"><small>Support Email</small><input id="updSupportEmail" class="input" value="support@fsengineeringai.com"></div>
+              </div>
+              <div class="kv" style="margin-top:10px"><small>File SHA256</small><input id="updFileSha256" class="input" placeholder="installer sha256 hash"></div>
+              <div class="kv" style="margin-top:10px"><small>Release Notes - one item per line</small><textarea id="updNotes" rows="6" placeholder="Updater.exe system added.\nRollback protection added."></textarea></div>
+              <div class="action-row">
+                <button class="btn ok" onclick="saveUpdateManifest()">Save Active Manifest</button>
+                <button class="btn secondary" onclick="previewUpdateJson()">Preview update.json</button>
+              </div>
+              <div id="updateJsonPreview" class="message hidden" style="word-break:break-all"></div>
+            </div>
+          </section>
+
+          <section id="panel-revoke" class="section-pane">
+            <div class="section-title">
+              <h2>Revoke Center</h2>
+              <div class="section-toolbar">
+                <span class="meta" id="revokeRulesLastLoaded">Not loaded</span>
+                <button class="btn secondary" onclick="loadRevokeRules()">Refresh</button>
+              </div>
+            </div>
+            <div class="notice">Use this center for cloud-side hard revoke rules. Rules can target license keys, machine IDs, app versions, or customer emails.</div>
+            <div class="request">
+              <div class="details">
+                <div class="kv"><small>Rule Type</small><select id="revRuleType"><option value="license_key">license_key</option><option value="machine_id">machine_id</option><option value="app_version">app_version</option><option value="customer_email">customer_email</option></select></div>
+                <div class="kv"><small>Rule Value</small><input id="revRuleValue" class="input" placeholder="value to revoke"></div>
+                <div class="kv"><small>Active</small><select id="revIsActive"><option value="true">true</option><option value="false">false</option></select></div>
+              </div>
+              <div class="kv" style="margin-top:10px"><small>Reason</small><textarea id="revReason" rows="3" placeholder="Reason for revoke"></textarea></div>
+              <div class="action-row"><button class="btn danger" onclick="addRevokeRule()">Add Revoke Rule</button></div>
+            </div>
+            <div id="revokeRulesList" class="request-list" style="margin-top:14px"><div class="empty">Loading revoke rules...</div></div>
           </section>
         </main>
       </div>
@@ -114,6 +172,8 @@
     let usageRows = [];
     let resetHistoryRows = [];
     let securityEventRows = [];
+    let updateManifestRow = null;
+    let revokeRuleRows = [];
     let currentAdminEmail = null;
 
     function showNotice(message, isError=false){const n=document.getElementById('notice');n.textContent=message;n.className='notice'+(isError?' err':'');n.classList.remove('hidden');setTimeout(()=>n.classList.add('hidden'),8000)}
@@ -133,7 +193,7 @@
     function daysFor(type){return DEFAULT_DAYS_BY_TYPE[type] || 365}
     function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}
     function showPanel(name){
-      ['requests','licenses','usage','resets','security'].forEach(p=>{
+      ['requests','licenses','usage','resets','security','updates','revoke'].forEach(p=>{
         const pane=document.getElementById('panel-'+p); if(pane) pane.classList.toggle('active', p===name);
         const tab=document.getElementById('tab-'+p); if(tab) tab.classList.toggle('active', p===name);
       });
@@ -142,6 +202,8 @@
       if(name==='usage') loadUsageMonitor();
       if(name==='resets') loadDeviceResetHistory();
       if(name==='security') loadSecurityEvents();
+      if(name==='updates') loadUpdateManifest();
+      if(name==='revoke') loadRevokeRules();
     }
 
     async function verifyAdminSession(){
@@ -180,6 +242,8 @@
       await loadUsageMonitor();
       await loadDeviceResetHistory();
       await loadSecurityEvents();
+      await loadUpdateManifest();
+      await loadRevokeRules();
     }
 
     async function loadRequests(){
@@ -668,6 +732,173 @@
         await loadSecurityEvents(); await loadGeneratedLicenses(); await loadUsageMonitor();
         await loadDeviceResetHistory();
       }catch(err){ console.error(err); showNotice('Security scan function failed.', true); }
+    }
+
+
+    function isoDateOnly(value){
+      if(!value) return new Date().toISOString().slice(0,10);
+      try{return new Date(value).toISOString().slice(0,10)}catch(e){return String(value).slice(0,10)}
+    }
+
+    function getUpdateFormPayload(){
+      const notes = document.getElementById('updNotes').value.split('\n').map(x=>x.trim()).filter(Boolean);
+      return {
+        product: document.getElementById('updProduct').value.trim() || 'FragSmart AI',
+        latest_version: document.getElementById('updLatestVersion').value.trim() || '1.0.0',
+        min_supported_version: document.getElementById('updMinSupportedVersion').value.trim() || '1.0.0',
+        mandatory: document.getElementById('updMandatory').value === 'true',
+        hard_revoke: document.getElementById('updHardRevoke').value === 'true',
+        download_url: document.getElementById('updDownloadUrl').value.trim(),
+        file_sha256: document.getElementById('updFileSha256').value.trim(),
+        release_date: document.getElementById('updReleaseDate').value || new Date().toISOString().slice(0,10),
+        support_email: document.getElementById('updSupportEmail').value.trim() || 'support@fsengineeringai.com',
+        notes,
+        is_active: true,
+        updated_at: new Date().toISOString()
+      };
+    }
+
+    async function loadUpdateManifest(){
+      const { data, error } = await fsSupabase
+        .from('fs_update_manifest')
+        .select('*')
+        .eq('is_active', true)
+        .order('updated_at', { ascending:false })
+        .limit(1)
+        .maybeSingle();
+      if(error){
+        console.error(error);
+        showNotice('Could not load update manifest: ' + error.message, true);
+        return;
+      }
+      updateManifestRow = data || null;
+      const row = data || {
+        product:'FragSmart AI', latest_version:'1.0.1', min_supported_version:'1.0.0', mandatory:false, hard_revoke:false,
+        download_url:'https://fsengineeringai.com/downloads/FragSmart_AI_Setup_v1.0.1.exe', file_sha256:'',
+        release_date:new Date().toISOString().slice(0,10), support_email:'support@fsengineeringai.com', notes:[]
+      };
+      document.getElementById('updProduct').value = row.product || 'FragSmart AI';
+      document.getElementById('updLatestVersion').value = row.latest_version || '';
+      document.getElementById('updMinSupportedVersion').value = row.min_supported_version || '1.0.0';
+      document.getElementById('updMandatory').value = row.mandatory ? 'true' : 'false';
+      document.getElementById('updHardRevoke').value = row.hard_revoke ? 'true' : 'false';
+      document.getElementById('updDownloadUrl').value = row.download_url || '';
+      document.getElementById('updFileSha256').value = row.file_sha256 || '';
+      document.getElementById('updReleaseDate').value = isoDateOnly(row.release_date);
+      document.getElementById('updSupportEmail').value = row.support_email || 'support@fsengineeringai.com';
+      let notes = row.notes || [];
+      if(typeof notes === 'string'){
+        try{notes = JSON.parse(notes)}catch(e){notes = [notes]}
+      }
+      if(!Array.isArray(notes)) notes = [];
+      document.getElementById('updNotes').value = notes.join('\n');
+      const el = document.getElementById('updateManagerLastLoaded'); if(el) el.textContent = 'Loaded: ' + new Date().toLocaleString();
+    }
+
+    async function saveUpdateManifest(){
+      const payload = getUpdateFormPayload();
+      if(!payload.latest_version){showNotice('Latest version is required.', true); return;}
+      if(!payload.download_url){showNotice('Download URL is required.', true); return;}
+      let error;
+      if(updateManifestRow && updateManifestRow.id){
+        ({ error } = await fsSupabase.from('fs_update_manifest').update(payload).eq('id', updateManifestRow.id));
+      } else {
+        ({ error } = await fsSupabase.from('fs_update_manifest').insert(payload));
+      }
+      if(error){showNotice('Could not save update manifest: ' + error.message, true); return;}
+      showNotice('Update manifest saved.');
+      await loadUpdateManifest();
+      previewUpdateJson();
+    }
+
+    function previewUpdateJson(){
+      const payload = getUpdateFormPayload();
+      const publicJson = {
+        product: payload.product,
+        latest_version: payload.latest_version,
+        min_supported_version: payload.min_supported_version,
+        mandatory: payload.mandatory,
+        hard_revoke: payload.hard_revoke,
+        download_url: payload.download_url,
+        file_sha256: payload.file_sha256,
+        release_date: payload.release_date,
+        support_email: payload.support_email,
+        notes: payload.notes
+      };
+      const box = document.getElementById('updateJsonPreview');
+      box.textContent = JSON.stringify(publicJson, null, 2);
+      box.classList.remove('hidden');
+    }
+
+    async function loadRevokeRules(){
+      const box = document.getElementById('revokeRulesList');
+      if(box) box.innerHTML = '<div class="empty">Loading revoke rules...</div>';
+      const { data, error } = await fsSupabase
+        .from('fs_revoke_rules')
+        .select('*')
+        .order('created_at', { ascending:false })
+        .limit(300);
+      if(error){
+        console.error(error);
+        if(box) box.innerHTML = '<div class="empty">Could not load revoke rules. Check fs_revoke_rules table/RLS.</div>';
+        showNotice('Could not load revoke rules: ' + error.message, true);
+        return;
+      }
+      revokeRuleRows = data || [];
+      const el = document.getElementById('revokeRulesLastLoaded'); if(el) el.textContent = 'Loaded: ' + new Date().toLocaleString();
+      renderRevokeRules();
+    }
+
+    function renderRevokeRules(){
+      const box = document.getElementById('revokeRulesList');
+      if(!box) return;
+      if(!revokeRuleRows.length){box.innerHTML = '<div class="empty">No revoke rules yet.</div>'; return;}
+      box.innerHTML = revokeRuleRows.map(row => {
+        const st = row.is_active ? 'revoked' : 'active';
+        return `<div class="request ${row.is_active ? 'usage-critical' : ''}">
+          <div class="request-head"><div><h3>${escapeHtml(row.rule_type || '-')}</h3><div class="meta">${formatDate(row.created_at)} • ${escapeHtml(row.created_by || '-')}</div></div><span class="status ${st}">${row.is_active ? 'active revoke' : 'disabled'}</span></div>
+          <div class="details"><div class="kv"><small>Rule Type</small><b>${escapeHtml(row.rule_type || '-')}</b></div><div class="kv"><small>Rule Value</small><b>${escapeHtml(row.rule_value || '-')}</b></div><div class="kv"><small>Status</small><b>${row.is_active ? 'Active' : 'Disabled'}</b></div></div>
+          <div class="message"><b>Reason:</b><br>${escapeHtml(row.reason || '-')}</div>
+          <div class="action-row"><button class="btn secondary" onclick="toggleRevokeRule('${escapeHtml(row.id)}', ${row.is_active ? 'false' : 'true'})">${row.is_active ? 'Disable' : 'Enable'}</button><button class="btn danger" onclick="deleteRevokeRule('${escapeHtml(row.id)}')">Delete</button></div>
+        </div>`;
+      }).join('');
+    }
+
+    async function addRevokeRule(){
+      const ruleType = document.getElementById('revRuleType').value;
+      const ruleValue = document.getElementById('revRuleValue').value.trim();
+      const isActive = document.getElementById('revIsActive').value === 'true';
+      const reason = document.getElementById('revReason').value.trim() || 'Added by cloud dashboard';
+      if(!ruleValue){showNotice('Rule value is required.', true); return;}
+      const ok = confirm('Add revoke rule for ' + ruleType + ':\n' + ruleValue + '\n\nContinue?');
+      if(!ok) return;
+      const { error } = await fsSupabase.from('fs_revoke_rules').insert({
+        rule_type: ruleType,
+        rule_value: ruleValue,
+        reason,
+        is_active: isActive,
+        created_by: currentAdminEmail || 'FS Engineering AI Admin'
+      });
+      if(error){showNotice('Could not add revoke rule: ' + error.message, true); return;}
+      document.getElementById('revRuleValue').value = '';
+      document.getElementById('revReason').value = '';
+      showNotice('Revoke rule added.');
+      await loadRevokeRules();
+    }
+
+    async function toggleRevokeRule(id, makeActive){
+      const { error } = await fsSupabase.from('fs_revoke_rules').update({is_active: !!makeActive}).eq('id', id);
+      if(error){showNotice(error.message, true); return;}
+      showNotice('Revoke rule updated.');
+      await loadRevokeRules();
+    }
+
+    async function deleteRevokeRule(id){
+      if(!confirm('Delete this revoke rule permanently?')) return;
+      const { error } = await fsSupabase.from('fs_revoke_rules').delete().eq('id', id);
+      if(error){showNotice(error.message, true); return;}
+      showNotice('Revoke rule deleted.');
+      await loadRevokeRules();
     }
 
     async function rejectRequest(id){
