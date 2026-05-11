@@ -2,10 +2,10 @@
   "product": "FragSmart AI",
   "latest_version": "1.0.0",
   "mandatory": false,
-  "download_url": "https://fsengineeringai.com/download",
+  "download_url": "https://fsengineeringai.com/updates/fragsmart/FragSmart_AI_Setup_1.0.0.exe",
   "release_date": "2026-05-11",
   "notes": [
-    "AUTO UPDATE SYSTEM added.",
+    "AUTO DOWNLOAD update flow prepared.",
     "Background version check enabled.",
     "HARD REVOKE MODE enabled.",
     "PDF footer domain fixed: www.fsengineeringai.com."
