@@ -1,15 +1,18 @@
 {
   "product": "FragSmart AI",
-  "latest_version": "1.0.0",
-  "mandatory": false,
-  "download_url": "https://fsengineeringai.com/updates/fragsmart/FragSmart_AI_Setup_1.0.0.exe",
-  "release_date": "2026-05-11",
-  "notes": [
-    "AUTO DOWNLOAD update flow prepared.",
-    "Background version check enabled.",
-    "HARD REVOKE MODE enabled.",
-    "PDF footer domain fixed: www.fsengineeringai.com."
-  ],
+  "latest_version": "1.0.1",
   "min_supported_version": "1.0.0",
-  "support_email": "support@fsengineeringai.com"
+  "mandatory": false,
+  "hard_revoke": false,
+  "download_url": "https://fsengineeringai.com/downloads/FragSmart_AI_Setup_v1.0.1.exe",
+  "file_sha256": "BURAYA_INSTALLER_SHA256_GELECEK",
+  "release_date": "2026-05-11",
+  "support_email": "support@fsengineeringai.com",
+  "notes": [
+    "REAL UPDATER SYSTEM added.",
+    "External updater.exe flow added.",
+    "Installer SHA256 verification added.",
+    "Update backup and update log system added.",
+    "Auto restart after update added."
+  ]
 }
