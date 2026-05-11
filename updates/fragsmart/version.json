@@ -1,0 +1,15 @@
+{
+  "product": "FragSmart AI",
+  "latest_version": "1.0",
+  "mandatory": false,
+  "download_url": "https://fsengineeringai.com/download",
+  "release_date": "2026-05-11",
+  "notes": [
+    "AUTO UPDATE SYSTEM added.",
+    "Background version check enabled.",
+    "HARD REVOKE MODE retained from v1.0.",
+    "PDF footer domain fixed: www.fsengineeringai.com."
+  ],
+  "min_supported_version": "1.0",
+  "support_email": "support@fsengineeringai.com"
+}
