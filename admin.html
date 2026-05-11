@@ -439,7 +439,7 @@
         ? `<div class="message"><b>Revoked:</b> ${formatDate(row.revoked_at)}<br><b>By:</b> ${escapeHtml(row.revoked_by || '-')}<br><b>Reason:</b> ${escapeHtml(row.revoke_reason || '-')}</div>`
         : '';
       const revokeButton = st === 'revoked'
-        ? `<button class="btn secondary" disabled>Already Revoked</button>`
+        ? `<button class="btn ok" onclick="reactivateGeneratedLicense('${id}')">Reactivate License</button>`
         : `<button class="btn danger" onclick="revokeLicense('${id}')">Revoke License</button>`;
       return `<div class="request">
         <div class="request-head">
@@ -497,6 +497,28 @@
       if(error){showNotice(error.message, true); return;}
       showNotice('License revoked successfully.');
       await loadGeneratedLicenses();
+    }
+
+    async function reactivateGeneratedLicense(id){
+      const row = generatedLicenses.find(x => String(x.id) === String(id)) || licenseDeviceRows.find(x => String(x.license_row_id) === String(id));
+      if(!id){showNotice('License record id not found.', true); return;}
+      const ok = confirm('Reactivate this license?
+
+If the desktop app is already locked, the user should click Activate License again after this action.');
+      if(!ok) return;
+      const { error } = await fsSupabase
+        .from('generated_licenses')
+        .update({
+          status: 'active',
+          revoked_at: null,
+          revoked_by: null,
+          revoke_reason: null
+        })
+        .eq('id', id);
+      if(error){showNotice(error.message, true); return;}
+      showNotice('License reactivated successfully.');
+      await loadGeneratedLicenses();
+      await loadLicenseDevices();
     }
 
     async function loadUsageMonitor(){
@@ -722,7 +744,7 @@
           <div class="kv"><small>Last Seen</small><b>${formatDate(row.last_seen_at)}</b></div>
         </div>
         <div class="message" style="word-break:break-all"><b>License Key:</b><br>${escapeHtml(row.license_key || '-')}</div>
-        <div class="action-row"><button class="btn secondary" onclick="copyUsageLicense('${escapeHtml(String(row.license_key || ''))}')">Copy License</button><button class="btn ok" onclick="saveAllowedDevices('${escapeHtml(row.license_row_id)}')">Save Device Limit</button></div>
+        <div class="action-row"><button class="btn secondary" onclick="copyUsageLicense('${escapeHtml(String(row.license_key || ''))}')">Copy License</button><button class="btn ok" onclick="saveAllowedDevices('${escapeHtml(row.license_row_id)}')">Save Device Limit</button>${String(row.license_status || '').toLowerCase()==='revoked' ? `<button class="btn ok" onclick="reactivateGeneratedLicense('${escapeHtml(row.license_row_id)}')">Reactivate License</button>` : ''}</div>
         ${deviceHtml}
       </div>`;
     }
@@ -749,7 +771,7 @@
     async function reactivateLicenseDevice(deviceId){
       if(!deviceId){showNotice('Device id not found.', true);return;}
       if(!confirm('Reactivate this device?')) return;
-      const { error } = await fsSupabase.from('license_devices').update({status:'active', revoked_at:null, revoked_by:null, revoke_reason:null}).eq('id', deviceId);
+      const { error } = await fsSupabase.from('license_devices').update({status:'active', revoked_at:null, revoked_by:null, revoke_reason:null, updated_at:new Date().toISOString()}).eq('id', deviceId);
       if(error){showNotice(error.message,true);return;}
       showNotice('Device reactivated.');
       await loadLicenseDevices();
