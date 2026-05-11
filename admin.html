@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FS Engineering AI | Secure Admin Panel</title>
+  <title>FS Engineering AI | Secure Admin Panel v3</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{--bg:#04070c;--panel:#08121c;--panel2:#0d1825;--text:#f4f8fc;--muted:#9aa9bd;--cyan:#55d8ff;--blue:#2d68ff;--green:#22c55e;--red:#ef4444;--amber:#f3a11a;--line:rgba(85,216,255,.18)}
@@ -38,7 +38,7 @@
             <div class="stat"><b id="rejectedCount">0</b><span>Rejected</span></div>
           </div>
           <div class="filters">
-            <select id="statusFilter" onchange="renderRequests()"><option value="all">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+            <select id="statusFilter" onchange="renderRequests()"><option value="pending" selected>Pending requests only</option><option value="all">All request history</option><option value="approved">Approved history</option><option value="rejected">Rejected history</option></select>
             <input id="searchBox" class="input" placeholder="Search company, customer, email..." oninput="renderRequests()" />
           </div>
           <div class="quick-menu">
@@ -63,7 +63,7 @@
           </div>
 
           <section id="panel-requests" class="section-pane active">
-            <div class="section-title"><h2>License Requests</h2><div class="section-toolbar"><span class="meta" id="lastLoaded">Not loaded</span><button class="btn secondary" onclick="loadRequests()">Refresh Requests</button></div></div>
+            <div class="section-title"><h2>Pending License Requests</h2><div class="section-toolbar"><span class="meta" id="lastLoaded">Not loaded</span><button class="btn secondary" onclick="loadRequests()">Refresh Requests</button></div></div>
             <div id="requestList" class="request-list"><div class="empty">Loading...</div></div>
           </section>
 
@@ -261,10 +261,17 @@
     }
 
     function renderRequests(){
-      const filter=document.getElementById('statusFilter').value;const q=document.getElementById('searchBox').value.trim().toLowerCase();
+      const filter=document.getElementById('statusFilter').value || 'pending';
+      const q=document.getElementById('searchBox').value.trim().toLowerCase();
       let rows=requests.filter(r=>filter==='all'||normalizeStatus(r.status)===filter);
       if(q){rows=rows.filter(r=>[r.company_name,r.customer_name,r.email,r.phone,r.machine_id,r.requested_package,r.message,r.license_key].some(v=>String(v||'').toLowerCase().includes(q)))}
-      if(!rows.length){document.getElementById('requestList').innerHTML='<div class="empty">No matching requests.</div>';return}
+      if(!rows.length){
+        const emptyText = filter === 'pending'
+          ? 'No pending license requests. Approved requests are moved out of this active list.'
+          : 'No matching requests.';
+        document.getElementById('requestList').innerHTML='<div class="empty">'+emptyText+'</div>';
+        return;
+      }
       document.getElementById('requestList').innerHTML=rows.map(r=>requestCard(r)).join('');
     }
 
