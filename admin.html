@@ -502,9 +502,7 @@
     async function reactivateGeneratedLicense(id){
       const row = generatedLicenses.find(x => String(x.id) === String(id)) || licenseDeviceRows.find(x => String(x.license_row_id) === String(id));
       if(!id){showNotice('License record id not found.', true); return;}
-      const ok = confirm('Reactivate this license?
-
-If the desktop app is already locked, the user should click Activate License again after this action.');
+      const ok = confirm('Reactivate this license?\n\nIf the desktop app is already locked, the user should click Activate License again after this action.');
       if(!ok) return;
       const { error } = await fsSupabase
         .from('generated_licenses')
